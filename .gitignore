@@ -1,0 +1,41 @@
+# ----------------------
+# Go (server)
+# ----------------------
+server/bin/
+server/build/
+server/*.exe
+server/*.out
+server/*.log
+
+# Go module cache (optional)
+go.sum
+*.test
+
+# ----------------------
+# Node / Next.js (websocket-client)
+# ----------------------
+websocket-client/node_modules/
+websocket-client/.next/
+websocket-client/out/
+websocket-client/.turbo/
+websocket-client/.vercel/
+
+# dotenv files (keep only if needed)
+websocket-client/.env*
+!websocket-client/.env.example
+
+# ----------------------
+# General
+# ----------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.bak
+*.tmp
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.iml
