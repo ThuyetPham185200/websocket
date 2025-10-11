@@ -3,15 +3,48 @@ package websockets
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
+	"time"
 	"websocketserver/websockets/http-server/server"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
 
+// Client infor
+type WSClientInfo struct {
+	Addr string
+	conn *websocket.Conn
+}
+
+func NewWSClientInfo(addr string, con *websocket.Conn) *WSClientInfo {
+	return &WSClientInfo{
+		Addr: addr,
+		conn: con,
+	}
+}
+
+func (ws *WSClientInfo) Send(messageType int, data []byte) error {
+	return ws.conn.WriteMessage(messageType, data)
+}
+
+func (ws *WSClientInfo) Recv() (messageType int, p []byte, err error) {
+	return ws.conn.ReadMessage()
+}
+
+func (ws *WSClientInfo) Close() error {
+	return ws.conn.Close()
+}
+
+func (ws *WSClientInfo) IsConnected() bool {
+	deadline := time.Now().Add(time.Second)
+	err := ws.conn.WriteControl(websocket.PingMessage, []byte{}, deadline)
+	return err == nil || !strings.Contains(err.Error(), "use of closed network connection")
+}
+
 // MessageHandler defines a custom callback for incoming messages
-type MessageHandler func(conn *websocket.Conn, msgType int, data []byte)
+type MessageHandler func(wsclient *WSClientInfo)
 
 // WebSocketServer manages multiple websocket clients
 type WebSocketServer struct {
@@ -50,7 +83,7 @@ func (s *WebSocketServer) Close() error {
 	fmt.Println("Stopping WebSocket server...")
 
 	s.connections.Range(func(key, value any) bool {
-		conn := value.(*websocket.Conn)
+		conn := value.(*WSClientInfo)
 		conn.Close()
 		return true
 	})
@@ -62,7 +95,7 @@ func (s *WebSocketServer) Close() error {
 }
 
 // RegisterHandler allows external modules to handle incoming messages
-func (s *WebSocketServer) RegisterHandler(handler MessageHandler) {
+func (s *WebSocketServer) OnNewConnection(handler MessageHandler) {
 	s.handler = handler
 }
 
@@ -75,32 +108,16 @@ func (s *WebSocketServer) handleUpgrade(w http.ResponseWriter, r *http.Request) 
 	}
 
 	addr := ws.RemoteAddr().String()
-	s.connections.Store(addr, ws)
+	wsc := NewWSClientInfo(addr, ws)
+	s.connections.Store(addr, wsc)
 	fmt.Printf("New client connected: %s\n", addr)
 
-	go s.listenClient(addr, ws)
+	go s.newConnection(wsc)
 }
 
 // Listen for messages from a specific client
-func (s *WebSocketServer) listenClient(addr string, conn *websocket.Conn) {
-	defer func() {
-		conn.Close()
-		s.connections.Delete(addr)
-		fmt.Printf("Client disconnected: %s\n", addr)
-	}()
-
-	for {
-		msgType, msg, err := conn.ReadMessage()
-		if err != nil {
-			fmt.Println("Read error:", err)
-			return
-		}
-
-		if s.handler != nil {
-			s.handler(conn, msgType, msg)
-		} else {
-			// default echo if no handler
-			conn.WriteMessage(msgType, msg)
-		}
+func (s *WebSocketServer) newConnection(wsclient *WSClientInfo) {
+	if s.handler != nil {
+		s.handler(wsclient)
 	}
 }
